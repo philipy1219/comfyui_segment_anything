@@ -7,6 +7,7 @@ NODE_CLASS_MAPPINGS = {
     'GroundingDinoSAMSegment (segment anything)': GroundingDinoSAMSegment,
     'InvertMask (segment anything)': InvertMask,
     "IsMaskEmpty": IsMaskEmptyNode,
+    "AutomaticSAMSegment (segment anything)": AutomaticSAMSegment
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS']

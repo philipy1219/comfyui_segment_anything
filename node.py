@@ -15,6 +15,7 @@ import folder_paths
 import comfy.model_management
 from sam_hq.predictor import SamPredictorHQ
 from sam_hq.build_sam_hq import sam_model_registry
+from sam_hq.automatic import SamAutomaticMaskGeneratorHQ
 from local_groundingdino.datasets import transforms as T
 from local_groundingdino.util.utils import clean_state_dict as local_groundingdino_clean_state_dict
 from local_groundingdino.util.slconfig import SLConfig as local_groundingdino_SLConfig
@@ -252,6 +253,27 @@ def sam_segment(
     masks = masks.permute(1, 0, 2, 3).cpu().numpy()
     return create_tensor_output(image_np, masks, boxes)
 
+def create_seg_color_image(
+        canvas_image: np.ndarray,
+        sam_masks: list,
+        ) -> np.ndarray:
+    """Create segmentation color image.
+
+    Args:
+        input_image (Union[np.ndarray, Image.Image]): input image
+        sam_masks (List[Dict[str, Any]]): SAM masks
+
+    Returns:
+        np.ndarray: segmentation color image
+    """
+
+    for idx, mask in enumerate(sam_masks):
+        seg_mask = np.expand_dims(mask.astype(np.uint8), axis=-1)
+        canvas_mask = np.logical_not(canvas_image.astype(bool)).astype(np.uint8)
+        seg_color = np.array([idx+1], dtype=np.uint8) * seg_mask * canvas_mask
+        canvas_image = canvas_image + seg_color
+
+    return canvas_image
 
 class SAMModelLoader:
     @classmethod
@@ -335,6 +357,55 @@ class GroundingDinoSAMSegment:
             return (empty_mask, empty_mask)
         return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0))
 
+class AutomaticSAMSegment:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "sam_model": ('SAM_MODEL', {}),
+                "image": ('IMAGE', {})
+            }
+        }
+    CATEGORY = "segment_anything"
+    FUNCTION = "main"
+    RETURN_TYPES = ("IMAGE", "MASK")
+
+    def main(self, sam_model, image):
+        res_images = []
+        res_masks = []
+        local_sam = SamAutomaticMaskGeneratorHQ(sam_model, pred_iou_thresh=0.86, stability_score_thresh=0.92, min_mask_region_area=64)
+        for item in image:
+            item = np.clip(255. * item.cpu().numpy(), 0, 255).astype(np.uint8)
+            anns = local_sam.generate(item)
+            masks = np.array([ann["segmentation"] for ann in anns])
+            res_images.extend(item)
+            res_masks.extend(masks)
+        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0))
+
+class SegColorMask:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mask": ('MASK', {})
+            }
+        }
+    CATEGORY = "segment_anything"
+    FUNCTION = "main"
+    RETURN_TYPES = ("MASK",)
+
+    def main(self, masks):
+        res_masks = []
+        masks = sorted(masks, key=lambda x: np.sum(x.astype(np.uint32)))
+        shapes = (masks[0].size[1], masks[0].size[0])
+        canvas_image = np.zeros((*shapes, 1), dtype=np.uint8)
+        seg_image = create_seg_color_image(canvas_image, masks)
+        pixels = seg_image.reshape(-1, seg_image.shape[-1])
+        unique_colors = np.unique(pixels, axis=0)
+        for i in range(len(unique_colors)):
+            if sum(unique_colors[i]) >= 64:
+                res_masks.append(np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8))
+        return (torch.cat(res_masks, dim=0),)
 
 class InvertMask:
     @classmethod
