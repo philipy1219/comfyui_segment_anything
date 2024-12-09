@@ -373,7 +373,11 @@ class AutomaticSAMSegment:
     def main(self, sam_model, image):
         res_images = []
         res_masks = []
-        local_sam = SamAutomaticMaskGeneratorHQ(sam_model, pred_iou_thresh=0.86, stability_score_thresh=0.92, min_mask_region_area=64)
+        sam_is_hq = False
+        # TODO: more elegant
+        if hasattr(sam_model, 'model_name') and 'hq' in sam_model.model_name:
+            sam_is_hq = True
+        local_sam = SamAutomaticMaskGeneratorHQ(SamPredictorHQ(sam_model, sam_is_hq), pred_iou_thresh=0.86, stability_score_thresh=0.92, min_mask_region_area=64)
         for item in image:
             item = np.clip(255. * item.cpu().numpy(), 0, 255).astype(np.uint8)
             anns = local_sam.generate(item)
