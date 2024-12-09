@@ -363,14 +363,15 @@ class AutomaticSAMSegment:
         return {
             "required": {
                 "sam_model": ('SAM_MODEL', {}),
-                "image": ('IMAGE', {})
+                "image": ('IMAGE', {}),
+                "seg_color_mask": (True, {})
             }
         }
     CATEGORY = "segment_anything"
     FUNCTION = "main"
     RETURN_TYPES = ("IMAGE", "MASK")
 
-    def main(self, sam_model, image):
+    def main(self, sam_model, image, seg_color_mask):
         res_images = []
         res_masks = []
         sam_is_hq = False
@@ -382,34 +383,24 @@ class AutomaticSAMSegment:
             item = np.clip(255. * item.cpu().numpy(), 0, 255).astype(np.uint8)
             anns = local_sam.generate(item)
             masks = np.array([ann["segmentation"] for ann in anns])
-            res_images.extend(item)
-            res_masks.extend(masks)
+            image_rgb = np.array(item).astype(np.float32) / 255.0
+            image_rgb = torch.from_numpy(image_rgb)[None,]
+            res_images.extend(image_rgb)
+            if seg_color_mask:
+                tmp_masks = []
+                masks = sorted(masks, key=lambda x: np.sum(x.astype(np.uint32)))
+                shapes = (masks[0].size[1], masks[0].size[0])
+                canvas_image = np.zeros((*shapes, 1), dtype=np.uint8)
+                seg_image = create_seg_color_image(canvas_image, masks)
+                pixels = seg_image.reshape(-1, seg_image.shape[-1])
+                unique_colors = np.unique(pixels, axis=0)
+                for i in range(len(unique_colors)):
+                    if sum(unique_colors[i]) >= 64:
+                        tmp_masks.append(np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8))
+                res_masks.extend(tmp_masks)
+            else:
+                res_masks.extend(masks)
         return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0))
-
-class SegColorMask:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "mask": ('MASK', {})
-            }
-        }
-    CATEGORY = "segment_anything"
-    FUNCTION = "main"
-    RETURN_TYPES = ("MASK",)
-
-    def main(self, masks):
-        res_masks = []
-        masks = sorted(masks, key=lambda x: np.sum(x.astype(np.uint32)))
-        shapes = (masks[0].size[1], masks[0].size[0])
-        canvas_image = np.zeros((*shapes, 1), dtype=np.uint8)
-        seg_image = create_seg_color_image(canvas_image, masks)
-        pixels = seg_image.reshape(-1, seg_image.shape[-1])
-        unique_colors = np.unique(pixels, axis=0)
-        for i in range(len(unique_colors)):
-            if sum(unique_colors[i]) >= 64:
-                res_masks.append(np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8))
-        return (torch.cat(res_masks, dim=0),)
 
 class InvertMask:
     @classmethod
