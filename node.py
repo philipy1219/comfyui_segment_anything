@@ -410,7 +410,7 @@ class AutomaticSAMSegment:
             else:
                 res_masks.extend(masks)
                 res_images.append(item)
-        return (torch.cat(res_masks, dim=0),)
+        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0))
 
 class InvertMask:
     @classmethod
