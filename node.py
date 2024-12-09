@@ -364,7 +364,7 @@ class AutomaticSAMSegment:
             "required": {
                 "sam_model": ('SAM_MODEL', {}),
                 "image": ('IMAGE', {}),
-                "seg_color_mask": (True, {})
+                "seg_color_mask": ("BOOLEAN", {"default": True})
             }
         }
     CATEGORY = "segment_anything"
