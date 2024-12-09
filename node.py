@@ -22,6 +22,7 @@ from local_groundingdino.util.slconfig import SLConfig as local_groundingdino_SL
 from local_groundingdino.models import build_model as local_groundingdino_build_model
 import glob
 import folder_paths
+import cv2
 
 logger = logging.getLogger('comfyui_segment_anything')
 
@@ -369,10 +370,11 @@ class AutomaticSAMSegment:
         }
     CATEGORY = "segment_anything"
     FUNCTION = "main"
-    RETURN_TYPES = ("MASK",)
+    RETURN_TYPES = ("IMAGE", "MASK")
 
     def main(self, sam_model, image, seg_color_mask):
         res_masks = []
+        res_images = []
         sam_is_hq = False
         # TODO: more elegant
         if hasattr(sam_model, 'model_name') and 'hq' in sam_model.model_name:
@@ -393,12 +395,19 @@ class AutomaticSAMSegment:
                 for i in range(len(unique_colors)):
                     tmp_mask = np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8)
                     if tmp_mask.sum() >= 256:
+                        background = np.zeros_like(item)
+                        region = cv2.bitwise_and(image, image, mask=tmp_mask)
+                        extracted_region = cv2.add(region, background)
+                        extracted_region = np.array(extracted_region).astype(np.float32) / 255.0
+                        extracted_region = torch.from_numpy(extracted_region)[None,]
+                        res_images.append(extracted_region)
                         tmp_mask = np.array(tmp_mask).astype(np.float32)
                         tmp_mask = torch.from_numpy(tmp_mask)[None,]
                         tmp_masks.append(tmp_mask)
                 res_masks.extend(tmp_masks)
             else:
                 res_masks.extend(masks)
+                res_images.append(item)
         return (torch.cat(res_masks, dim=0),)
 
 class InvertMask:
