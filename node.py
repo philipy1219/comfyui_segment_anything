@@ -386,6 +386,7 @@ class AutomaticSAMSegment:
             masks = np.array([ann["segmentation"] for ann in anns])
             if seg_color_mask:
                 tmp_masks = []
+                tmp_images = []
                 masks = sorted(masks, key=lambda x: np.sum(x.astype(np.uint32)))
                 shapes = (masks[0].shape[1], masks[0].shape[0])
                 canvas_image = np.zeros((*shapes, 1), dtype=np.uint8)
@@ -400,11 +401,12 @@ class AutomaticSAMSegment:
                         extracted_region = cv2.add(region, background)
                         extracted_region = np.array(extracted_region).astype(np.float32) / 255.0
                         extracted_region = torch.from_numpy(extracted_region)[None,]
-                        res_images.append(extracted_region)
+                        tmp_images.append(extracted_region)
                         tmp_mask = np.array(tmp_mask).astype(np.float32)
                         tmp_mask = torch.from_numpy(tmp_mask)[None,]
                         tmp_masks.append(tmp_mask)
                 res_masks.extend(tmp_masks)
+                res_images.extend(tmp_images)
             else:
                 res_masks.extend(masks)
                 res_images.append(item)
