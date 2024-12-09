@@ -396,7 +396,7 @@ class AutomaticSAMSegment:
                     tmp_mask = np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8)
                     if tmp_mask.sum() >= 256:
                         background = np.zeros_like(item)
-                        region = cv2.bitwise_and(image, image, mask=tmp_mask)
+                        region = cv2.bitwise_and(item, item, mask=tmp_mask)
                         extracted_region = cv2.add(region, background)
                         extracted_region = np.array(extracted_region).astype(np.float32) / 255.0
                         extracted_region = torch.from_numpy(extracted_region)[None,]
