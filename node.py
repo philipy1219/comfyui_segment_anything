@@ -395,7 +395,7 @@ class AutomaticSAMSegment:
                 unique_colors = np.unique(pixels, axis=0)
                 for i in range(len(unique_colors)):
                     tmp_mask = np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8)
-                    if tmp_mask.sum() >= 256:
+                    if tmp_mask.sum() >= 4096:
                         background = np.zeros_like(item)
                         region = cv2.bitwise_and(item, item, mask=tmp_mask)
                         extracted_region = cv2.add(region, background)
