@@ -391,8 +391,8 @@ class AutomaticSAMSegment:
                 pixels = seg_image.reshape(-1, seg_image.shape[-1])
                 unique_colors = np.unique(pixels, axis=0)
                 for i in range(len(unique_colors)):
-                    if sum(unique_colors[i]) >= 64:
-                        tmp_mask = np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8)
+                    tmp_mask = np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8)
+                    if sum(tmp_mask) >= 64:
                         tmp_mask = np.array(tmp_mask).astype(np.float32)
                         tmp_mask = torch.from_numpy(tmp_mask)[None,]
                         tmp_masks.append(tmp_mask)
