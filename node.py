@@ -388,7 +388,7 @@ class AutomaticSAMSegment:
                 tmp_masks = []
                 tmp_images = []
                 masks = sorted(masks, key=lambda x: np.sum(x.astype(np.uint32)))
-                shapes = (masks[0].shape[1], masks[0].shape[0])
+                shapes = masks[0].shape
                 canvas_image = np.zeros((*shapes, 1), dtype=np.uint8)
                 seg_image = create_seg_color_image(canvas_image, masks)
                 pixels = seg_image.reshape(-1, seg_image.shape[-1])
