@@ -365,14 +365,15 @@ class AutomaticSAMSegment:
             "required": {
                 "sam_model": ('SAM_MODEL', {}),
                 "image": ('IMAGE', {}),
-                "seg_color_mask": ("BOOLEAN", {"default": True})
+                "seg_color_mask": ("BOOLEAN", {"default": True}),
+                "minimum_pixels": ("INT", {"default":64}),
             }
         }
     CATEGORY = "segment_anything"
     FUNCTION = "main"
     RETURN_TYPES = ("IMAGE", "MASK")
 
-    def main(self, sam_model, image, seg_color_mask):
+    def main(self, sam_model, image, seg_color_mask, minimum_pixels):
         res_masks = []
         res_images = []
         sam_is_hq = False
@@ -387,7 +388,7 @@ class AutomaticSAMSegment:
             if seg_color_mask:
                 tmp_masks = []
                 tmp_images = []
-                masks = sorted(masks, key=lambda x: np.sum(x.astype(np.uint32)))
+                masks = sorted(masks, key=lambda x: np.sum(x[0].astype(np.uint32)))
                 shapes = masks[0].shape
                 canvas_image = np.zeros((*shapes, 1), dtype=np.uint8)
                 seg_image = create_seg_color_image(canvas_image, masks)
@@ -395,7 +396,7 @@ class AutomaticSAMSegment:
                 unique_colors = np.unique(pixels, axis=0)
                 for i in range(len(unique_colors)):
                     tmp_mask = np.all(seg_image==unique_colors[i],axis=-1).astype(np.uint8)
-                    if tmp_mask.sum() >= 4096:
+                    if tmp_mask.sum() >= minimum_pixels * minimum_pixels:
                         background = np.zeros_like(item)
                         region = cv2.bitwise_and(item, item, mask=tmp_mask)
                         extracted_region = cv2.add(region, background)
@@ -411,6 +412,84 @@ class AutomaticSAMSegment:
                 res_masks.extend(masks)
                 res_images.append(item)
         return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0))
+
+class AutomaticClipClassifySegment:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "clip_name": ([], ),
+                "clipseg_name": ([], ),
+                "image": ('IMAGE', {}),
+                "mask": ('MASK', {}),
+                "scale_small": ('FLOAT', {"default":1.2}),
+                "scale_huge": ('FLOAT', {"default":1.6})
+            }
+        }
+    CATEGORY = "segment_anything"
+    FUNCTION = "main"
+    RETURN_TYPES = ("TEXT")
+
+    def main(self, clip_name, clipseg_name, image, mask, scale_small, scale_huge):
+        import mmcv
+        result_list = []
+        for img, mas in zip(image, mask):
+            item = np.clip(255. * img.cpu().numpy(), 0, 255).astype(np.uint8)
+            bbox = self.get_mask_bbox(mas)
+            patch_small = mmcv.imcrop(img, bbox, scale_ratio=scale_small)
+            patch_huge = mmcv.imcrop(img, bbox, scale_ratio=scale_huge)
+            mask_categories = self.clip_classification(patch_small, class_list, 3 if len(class_list)>3 else len(class_list), clip_processor, clip_model)
+            class_ids_patch_huge = self.clipseg_segmentation(patch_huge, mask_categories, clipseg_processor, clipseg_model).argmax(0)
+            top_1_patch_huge = torch.bincount(class_ids_patch_huge.flatten()).topk(1).indices
+            top_1_mask_category = mask_categories[top_1_patch_huge.item()]
+            result_list.append(top_1_mask_category)
+        return result_list
+
+    def clip_classification(self, image, class_list, top_k, clip_processor, clip_model):
+        inputs = clip_processor(text=class_list, images=image, return_tensors="pt", padding=True).to(comfy.model_management.get_torch_device())
+        outputs = clip_model(**inputs)
+        logits_per_image = outputs.logits_per_image
+        probs = logits_per_image.softmax(dim=1)
+        if top_k == 1:
+            class_name = class_list[probs.argmax().item()]
+            return class_name
+        else:
+            top_k_indices = probs.topk(top_k, dim=1).indices[0]
+            top_k_class_names = [class_list[index] for index in top_k_indices]
+            return top_k_class_names
+
+    def clipseg_segmentation(self, image, class_list, clipseg_processor, clipseg_model):
+        inputs = clipseg_processor(
+            text=class_list, images=[image] * len(class_list),
+            padding=True, return_tensors="pt").to(comfy.model_management.get_torch_device())
+        # resize inputs['pixel_values'] to the longesr side of inputs['pixel_values']
+        h, w = inputs['pixel_values'].shape[-2:]
+        fixed_scale = (512, 512)
+        inputs['pixel_values'] = F.interpolate(
+            inputs['pixel_values'],
+            size=fixed_scale,
+            mode='bilinear',
+            align_corners=False)
+        outputs = clipseg_model(**inputs)
+        logits = torch.nn.functional.interpolate(outputs.logits[None], size=(h, w), mode='bilinear', align_corners=False)[0]
+        return logits
+
+    def get_mask_bbox(self, mask):
+        """
+        获取给定mask的包围盒 (bounding box)。
+        参数：
+            mask (np.ndarray): 二值掩码，0表示背景，1表示前景。
+        返回：
+            tuple: 包围盒 (x_min, y_min, x_max, y_max)。
+        """
+        # 获取非零元素（前景像素）的索引
+        rows = np.any(mask, axis=1)  # 哪些行有前景
+        cols = np.any(mask, axis=0)  # 哪些列有前景
+        # 找到行和列中第一个和最后一个非零元素的位置
+        y_min, y_max = np.where(rows)[0][[0, -1]]
+        x_min, x_max = np.where(cols)[0][[0, -1]]
+        # 包围盒的坐标
+        return x_min, y_min, x_max, y_max
 
 class InvertMask:
     @classmethod
