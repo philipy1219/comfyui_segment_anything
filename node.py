@@ -17,12 +17,16 @@ from sam_hq.predictor import SamPredictorHQ
 from sam_hq.build_sam_hq import sam_model_registry
 from sam_hq.automatic import SamAutomaticMaskGeneratorHQ
 from local_groundingdino.datasets import transforms as T
-from local_groundingdino.util.utils import clean_state_dict as local_groundingdino_clean_state_dict
+from local_groundingdino.util.utils import clean_state_dict as local_groundingdino_clean_state_dict, get_phrases_from_posmap
 from local_groundingdino.util.slconfig import SLConfig as local_groundingdino_SLConfig
 from local_groundingdino.models import build_model as local_groundingdino_build_model
 import glob
 import folder_paths
 import cv2
+import torchvision
+import torchvision.transforms as TS
+from ram.models import ram, ram_plus
+from ram import inference_ram
 
 logger = logging.getLogger('comfyui_segment_anything')
 
@@ -61,6 +65,16 @@ groundingdino_model_list = {
         "config_url": "https://huggingface.co/ShilongLiu/GroundingDINO/resolve/main/GroundingDINO_SwinB.cfg.py",
         "model_url": "https://huggingface.co/ShilongLiu/GroundingDINO/resolve/main/groundingdino_swinb_cogcoor.pth"
     },
+}
+
+ram_model_dir_name = "ram"
+ram_model_list = {
+    "ram_plus_vits_l": {
+        "model_url": "https://huggingface.co/xinyu1205/recognize-anything-plus-model/resolve/main/ram_plus_swin_large_14m.pth"
+    },
+    "ram_vits_l": {
+        "model_url": "https://huggingface.co/spaces/xinyu1205/recognize-anything/resolve/main/ram_swin_large_14m.pth"
+    }
 }
 
 def get_bert_base_uncased_model_path():
@@ -191,6 +205,110 @@ def groundingdino_predict(
         boxes_filt[i][2:] += boxes_filt[i][:2]
     return boxes_filt
 
+def groundingdino_predict_with_text_threshold(
+    dino_model,
+    image,
+    prompt,
+    threshold,
+    text_threshold
+):
+    def load_dino_image(image_pil):
+        transform = T.Compose(
+            [
+                T.RandomResize([800], max_size=1333),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+        image, _ = transform(image_pil, None)  # 3, h, w
+        return image
+        
+    def get_grounding_output(model, image, caption, box_threshold, text_threshold):
+        caption = caption.lower()
+        caption = caption.strip()
+        if not caption.endswith("."):
+            caption = caption + "."
+        device = comfy.model_management.get_torch_device()
+        image = image.to(device)
+        with torch.no_grad():
+            outputs = model(image[None], captions=[caption])
+        logits = outputs["pred_logits"].cpu().sigmoid()[0]  # (nq, 256)
+        boxes = outputs["pred_boxes"].cpu()[0]  # (nq, 4)
+        logits.shape[0]
+
+        # filter output
+        logits_filt = logits.clone()
+        boxes_filt = boxes.clone()
+        filt_mask = logits_filt.max(dim=1)[0] > box_threshold
+        logits_filt = logits_filt[filt_mask]  # num_filt, 256
+        boxes_filt = boxes_filt[filt_mask]  # num_filt, 4
+        logits_filt.shape[0]
+
+        # get phrase
+        tokenlizer = model.tokenizer
+        tokenized = tokenlizer(caption)
+        # build pred
+        pred_phrases = []
+        scores = []
+        for logit, box in zip(logits_filt, boxes_filt):
+            pred_phrase = get_phrases_from_posmap(logit > text_threshold, tokenized, tokenlizer)
+            pred_phrases.append(pred_phrase + f"({str(logit.max().item())[:4]})")
+            scores.append(logit.max().item())
+
+        return boxes_filt, torch.Tensor(scores), pred_phrases
+    dino_image = load_dino_image(image.convert("RGB"))
+    boxes_filt, scores, pred_phrases = get_grounding_output(
+        dino_model, dino_image, prompt, threshold, text_threshold
+    )
+    H, W = image.size[1], image.size[0]
+    for i in range(boxes_filt.size(0)):
+        boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
+        boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
+        boxes_filt[i][2:] += boxes_filt[i][:2]
+    return boxes_filt, scores, pred_phrases 
+
+def list_ram_model():
+    return list(ram_model_list.keys())
+
+def load_ram_model(model_name):
+    ram_checkpoint = get_local_filepath(
+        ram_model_list[model_name]["model_url"], ram_model_dir_name
+    )
+    if "plus" in model_name:
+        ram_model = ram_plus(pretrained=ram_checkpoint, image_size=384, vit='swin_l')
+    else:
+        ram_model = ram(pretrained=ram_checkpoint, image_size=384, vit='swin_l')
+    device = comfy.model_management.get_torch_device()
+    ram_model.to(device=device)
+    ram_model.eval()
+    return ram_model
+
+def ram_predict(
+    ram_model,
+    image,
+):
+    def load_ram_image(image_pil):
+        raw_image = image_pil.resize((384, 384))
+        transform = TS.Compose(
+            [
+                TS.Resize((384, 384)),
+                TS.ToTensor(),
+                TS.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+        raw_image = transform(raw_image).unsqueeze(0)  # 3, h, w
+        return raw_image
+    def get_ram_output(model, image):
+        device = comfy.model_management.get_torch_device()
+        image = image.to(device)
+        with torch.no_grad():
+            outputs = inference_ram(image, model)
+        tags=outputs[0].replace(' |', ',')
+        tags_chinese=outputs[1].replace(' |', ',')
+        return tags, tags_chinese
+    ram_image = load_ram_image(image)
+    tags, tags_chinese = get_ram_output(ram_model, ram_image)
+    return tags, tags_chinese
 
 def create_pil_output(image_np, masks, boxes_filt):
     output_masks, output_images = [], []
@@ -309,6 +427,21 @@ class GroundingDinoModelLoader:
         dino_model = load_groundingdino_model(model_name)
         return (dino_model, )
 
+class RAMModelLoader:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model_name": (list_ram_model(), ),
+            }
+        }
+    CATEGORY = "segment_anything"
+    FUNCTION = "main"
+    RETURN_TYPES = ("RAM_MODEL", )
+
+    def main(self, model_name):
+        ram_model = load_ram_model(model_name)
+        return (ram_model, )
 
 class GroundingDinoSAMSegment:
     @classmethod
@@ -367,20 +500,21 @@ class AutomaticSAMSegment:
                 "image": ('IMAGE', {}),
                 "seg_color_mask": ("BOOLEAN", {"default": True}),
                 "minimum_pixels": ("INT", {"default":64}),
+                "points_per_side": ("INT", {"default":32})
             }
         }
     CATEGORY = "segment_anything"
     FUNCTION = "main"
     RETURN_TYPES = ("IMAGE", "MASK")
 
-    def main(self, sam_model, image, seg_color_mask, minimum_pixels):
+    def main(self, sam_model, image, seg_color_mask, minimum_pixels, points_per_side):
         res_masks = []
         res_images = []
         sam_is_hq = False
         # TODO: more elegant
         if hasattr(sam_model, 'model_name') and 'hq' in sam_model.model_name:
             sam_is_hq = True
-        local_sam = SamAutomaticMaskGeneratorHQ(SamPredictorHQ(sam_model, sam_is_hq), pred_iou_thresh=0.86, stability_score_thresh=0.92, min_mask_region_area=64)
+        local_sam = SamAutomaticMaskGeneratorHQ(SamPredictorHQ(sam_model, sam_is_hq), pred_iou_thresh=0.86, stability_score_thresh=0.92, min_mask_region_area=minimum_pixels, points_per_side=points_per_side)
         for item in image:
             item = np.clip(255. * item.cpu().numpy(), 0, 255).astype(np.uint8)
             anns = local_sam.generate(item)
@@ -413,83 +547,91 @@ class AutomaticSAMSegment:
                 res_images.append(item)
         return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0))
 
-class AutomaticClipClassifySegment:
+class RAMSAMSegment:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "clip_name": ([], ),
-                "clipseg_name": ([], ),
+                "sam_model": ('SAM_MODEL', {}),
+                "dino_model": ('GROUNDING_DINO_MODEL', {}),
+                "ram_model": ('RAM_MODEL', {}),
                 "image": ('IMAGE', {}),
-                "mask": ('MASK', {}),
-                "scale_small": ('FLOAT', {"default":1.2}),
-                "scale_huge": ('FLOAT', {"default":1.6})
+                "box_threshold": ("FLOAT", {
+                    "default": 0.25,
+                    "min": 0,
+                    "max": 1.0,
+                    "step": 0.01
+                }),
+                "text_threshold": ("FLOAT", {
+                    "default": 0.2,
+                    "min": 0,
+                    "max": 1.0,
+                    "step": 0.01
+                }),
+                "iou_threshold": ("FLOAT", {
+                    "default": 0.5,
+                    "min": 0,
+                    "max": 1.0,
+                    "step": 0.01
+                })
             }
         }
     CATEGORY = "segment_anything"
     FUNCTION = "main"
-    RETURN_TYPES = ("TEXT")
+    RETURN_TYPES = ("IMAGE", "MASK")
 
-    def main(self, clip_name, clipseg_name, image, mask, scale_small, scale_huge):
-        import mmcv
-        result_list = []
-        for img, mas in zip(image, mask):
-            item = np.clip(255. * img.cpu().numpy(), 0, 255).astype(np.uint8)
-            bbox = self.get_mask_bbox(mas)
-            patch_small = mmcv.imcrop(img, bbox, scale_ratio=scale_small)
-            patch_huge = mmcv.imcrop(img, bbox, scale_ratio=scale_huge)
-            mask_categories = self.clip_classification(patch_small, class_list, 3 if len(class_list)>3 else len(class_list), clip_processor, clip_model)
-            class_ids_patch_huge = self.clipseg_segmentation(patch_huge, mask_categories, clipseg_processor, clipseg_model).argmax(0)
-            top_1_patch_huge = torch.bincount(class_ids_patch_huge.flatten()).topk(1).indices
-            top_1_mask_category = mask_categories[top_1_patch_huge.item()]
-            result_list.append(top_1_mask_category)
-        return result_list
-
-    def clip_classification(self, image, class_list, top_k, clip_processor, clip_model):
-        inputs = clip_processor(text=class_list, images=image, return_tensors="pt", padding=True).to(comfy.model_management.get_torch_device())
-        outputs = clip_model(**inputs)
-        logits_per_image = outputs.logits_per_image
-        probs = logits_per_image.softmax(dim=1)
-        if top_k == 1:
-            class_name = class_list[probs.argmax().item()]
-            return class_name
-        else:
-            top_k_indices = probs.topk(top_k, dim=1).indices[0]
-            top_k_class_names = [class_list[index] for index in top_k_indices]
-            return top_k_class_names
-
-    def clipseg_segmentation(self, image, class_list, clipseg_processor, clipseg_model):
-        inputs = clipseg_processor(
-            text=class_list, images=[image] * len(class_list),
-            padding=True, return_tensors="pt").to(comfy.model_management.get_torch_device())
-        # resize inputs['pixel_values'] to the longesr side of inputs['pixel_values']
-        h, w = inputs['pixel_values'].shape[-2:]
-        fixed_scale = (512, 512)
-        inputs['pixel_values'] = F.interpolate(
-            inputs['pixel_values'],
-            size=fixed_scale,
-            mode='bilinear',
-            align_corners=False)
-        outputs = clipseg_model(**inputs)
-        logits = torch.nn.functional.interpolate(outputs.logits[None], size=(h, w), mode='bilinear', align_corners=False)[0]
-        return logits
-
-    def get_mask_bbox(self, mask):
-        """
-        获取给定mask的包围盒 (bounding box)。
-        参数：
-            mask (np.ndarray): 二值掩码，0表示背景，1表示前景。
-        返回：
-            tuple: 包围盒 (x_min, y_min, x_max, y_max)。
-        """
-        # 获取非零元素（前景像素）的索引
-        rows = np.any(mask, axis=1)  # 哪些行有前景
-        cols = np.any(mask, axis=0)  # 哪些列有前景
-        # 找到行和列中第一个和最后一个非零元素的位置
-        y_min, y_max = np.where(rows)[0][[0, -1]]
-        x_min, x_max = np.where(cols)[0][[0, -1]]
-        # 包围盒的坐标
-        return x_min, y_min, x_max, y_max
+    def main(self, sam_model, dino_model, ram_model, image, box_threshold, text_threshold, iou_threshold):
+        res_images = []
+        res_masks = []
+        # TODO: more elegant
+        if hasattr(sam_model, 'model_name') and 'hq' in sam_model.model_name:
+            sam_is_hq = True
+        local_sam = SamPredictorHQ(sam_model, sam_is_hq)
+        device = comfy.model_management.get_torch_device()
+        for item in image:
+            item = np.clip(255. * item.cpu().numpy(), 0, 255).astype(np.uint8)
+            image_pil = Image.fromarray(item)        
+            tags, tags_chinese = ram_predict(ram_model, image_pil)
+            boxes_filt, scores, pred_phrases = groundingdino_predict_with_text_threshold(
+                dino_model, image_pil, tags, box_threshold, text_threshold
+            )
+            print(f"Before NMS: {boxes_filt.shape[0]} boxes")
+            nms_idx = torchvision.ops.nms(boxes_filt, scores, iou_threshold).numpy().tolist()
+            boxes_filt = boxes_filt[nms_idx]
+            pred_phrases = [pred_phrases[idx] for idx in nms_idx]
+            print(f"After NMS: {boxes_filt.shape[0]} boxes")
+            image = np.array(image_pil)
+            local_sam.set_image(image)
+            transformed_boxes = local_sam.transform.apply_boxes_torch(boxes_filt, image.shape[:2]).to(device)
+            masks, _, _ = local_sam.predict_torch(
+                point_coords = None,
+                point_labels = None,
+                boxes = transformed_boxes.to(device),
+                multimask_output = False,
+            )
+            tmp_images = []
+            combined_mask = torch.zeros_like(masks[0][0])
+            for mask in masks:
+                combined_mask = combined_mask | mask[0]  # 使用或运算合并所有mask
+                mask_np = mask[0].cpu().numpy().astype(np.uint8) * 255
+                background = np.zeros_like(item)
+                region = cv2.bitwise_and(item, item, mask=mask_np)
+                extracted_region = cv2.add(region, background)
+                extracted_region = np.array(extracted_region).astype(np.float32) / 255.0
+                extracted_region = torch.from_numpy(extracted_region)[None,]
+                tmp_images.append(extracted_region)
+            # 反转所有前景
+            bg_mask = ~combined_mask 
+            bg_mask = bg_mask.unsqueeze(0) 
+            bg_mask_np = bg_mask[0].cpu().numpy().astype(np.uint8) * 255
+            background = np.zeros_like(item)
+            bg_region = cv2.bitwise_and(item, item, mask=bg_mask_np)
+            extracted_region = cv2.add(bg_region, background)
+            extracted_region = np.array(extracted_region).astype(np.float32) / 255.0
+            bg_extracted = torch.from_numpy(extracted_region)[None,]
+            res_masks.extend(torch.cat([bg_mask.unsqueeze(0), masks], dim=0))
+            res_images.extend([bg_extracted] + tmp_images)
+        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0))
 
 class InvertMask:
     @classmethod

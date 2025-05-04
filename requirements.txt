@@ -3,3 +3,4 @@ timm
 addict
 yapf
 opencv-python
+fairscale
