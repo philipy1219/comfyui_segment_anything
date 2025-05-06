@@ -578,7 +578,8 @@ class RAMSAMSegment:
         }
     CATEGORY = "segment_anything"
     FUNCTION = "main"
-    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_TYPES = ("IMAGE", "MASK", "MASK")
+    RETURN_NAMES = ["image", "mask", "combined_mask"]
 
     def main(self, sam_model, dino_model, ram_model, image, box_threshold, text_threshold, iou_threshold):
         res_images = []
@@ -620,18 +621,9 @@ class RAMSAMSegment:
                 extracted_region = np.array(extracted_region).astype(np.float32) / 255.0
                 extracted_region = torch.from_numpy(extracted_region)[None,]
                 tmp_images.append(extracted_region)
-            # 反转所有前景
-            bg_mask = ~combined_mask 
-            bg_mask = bg_mask.unsqueeze(0) 
-            bg_mask_np = bg_mask[0].cpu().numpy().astype(np.uint8) * 255
-            background = np.zeros_like(item)
-            bg_region = cv2.bitwise_and(item, item, mask=bg_mask_np)
-            extracted_region = cv2.add(bg_region, background)
-            extracted_region = np.array(extracted_region).astype(np.float32) / 255.0
-            bg_extracted = torch.from_numpy(extracted_region)[None,]
-            res_masks.extend(torch.cat([bg_mask.unsqueeze(0), masks], dim=0))
-            res_images.extend([bg_extracted] + tmp_images)
-        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0))
+            res_masks.extend(masks)
+            res_images.extend(tmp_images)
+        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0), combined_mask.unsqueeze(0))
 
 class InvertMask:
     @classmethod
