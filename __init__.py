@@ -9,7 +9,8 @@ NODE_CLASS_MAPPINGS = {
     "IsMaskEmpty": IsMaskEmptyNode,
     "AutomaticSAMSegment (segment anything)": AutomaticSAMSegment,
     "RAMModelLoader (segment anything)": RAMModelLoader,
-    "RAMSAMSegment (segment anything)": RAMSAMSegment
+    "RAMSAMSegment (segment anything)": RAMSAMSegment,
+    "CalculateMaskCenters": CalculateMaskCenters
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS']

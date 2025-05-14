@@ -625,6 +625,73 @@ class RAMSAMSegment:
             res_images.extend(tmp_images)
         return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0), combined_mask.unsqueeze(0))
 
+class CalculateMaskCenters:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "masks": ("MASK", {}),
+                "depth_image": ("IMAGE", {})
+            }
+        }
+    
+    CATEGORY = "segment_anything"
+    FUNCTION = "main"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("mask_centers",)
+    
+    def calculate_depth(self, x_cord, y_cord, depth_npy):
+        # 获取深度图维度，考虑可能有多个通道
+        if len(depth_npy.shape) > 2:
+            # 如果是多通道图像，使用第一个通道或平均值
+            if depth_npy.shape[2] == 1:
+                depth_npy = depth_npy[:, :, 0]
+            else:
+                # 使用所有通道的平均值
+                depth_npy = np.mean(depth_npy, axis=2)
+        
+        h, w = depth_npy.shape
+        x0, y0 = int(np.floor(x_cord)), int(np.floor(y_cord))
+        x1, y1 = min(x0 + 1, w - 1), min(y0 + 1, h - 1)
+        
+        # 计算插值权重
+        wx = x_cord - x0
+        wy = y_cord - y0
+        
+        # 双线性插值
+        top = depth_npy[y0, x0] * (1 - wx) + depth_npy[y0, x1] * wx
+        bottom = depth_npy[y1, x0] * (1 - wx) + depth_npy[y1, x1] * wx
+        
+        return float(top * (1 - wy) + bottom * wy)
+    
+    def main(self, masks, depth_image): 
+        import json
+        # 转换深度图为numpy数组
+        depth_np = depth_image[0].cpu().numpy()
+        
+        # 初始化结果列表
+        mask_centers = []
+        
+        # 遍历每个mask
+        for i in range(masks.shape[0]):
+            mask = masks[i].cpu().numpy()
+            
+            # 找到mask中所有非零点的坐标
+            y_coords, x_coords = np.where(mask > 0)
+            
+            if len(y_coords) > 0:
+                # 计算mask的中心点
+                center_y = np.mean(y_coords)
+                center_x = np.mean(x_coords)
+                
+                # 计算中心点的深度值
+                center_depth = self.calculate_depth(center_x, center_y, depth_np)
+                
+                # 将中心坐标添加到结果列表
+                mask_centers.append((float(center_x)/depth_image.shape[1], float(center_y)/depth_image.shape[0], float(center_depth)))
+        
+        return (json.dumps(mask_centers,ensure_ascii=False),)
+
 class InvertMask:
     @classmethod
     def INPUT_TYPES(cls):
