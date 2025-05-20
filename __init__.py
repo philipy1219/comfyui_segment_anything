@@ -10,7 +10,9 @@ NODE_CLASS_MAPPINGS = {
     "AutomaticSAMSegment (segment anything)": AutomaticSAMSegment,
     "RAMModelLoader (segment anything)": RAMModelLoader,
     "RAMSAMSegment (segment anything)": RAMSAMSegment,
-    "CalculateMaskCenters": CalculateMaskCenters
+    "CalculateMaskCenters": CalculateMaskCenters,
+    "MaskToRandomLatent": MaskToRandomLatentNode,
+    "ComputeSurfaceTiltAngle": ComputeSurfaceTiltAngleNode
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS']

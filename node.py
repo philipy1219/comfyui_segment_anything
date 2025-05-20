@@ -692,6 +692,117 @@ class CalculateMaskCenters:
         
         return (json.dumps(mask_centers,ensure_ascii=False),)
 
+class MaskToRandomLatentNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "mask": ("MASK",),
+                "vae": ("VAE",),
+            }
+        }
+
+    CATEGORY = "segment_anything"
+    FUNCTION = "main"
+    RETURN_TYPES = ("LATENT",)
+
+    def main(self, image, mask, vae):
+        # 编码图像获取latent
+        latent = vae.encode(image[:,:,:,:3])
+        
+        # 生成随机噪声,形状与latent相同
+        noise = torch.randn_like(latent)
+        
+        # 调整mask形状以匹配latent
+        mask_downsample = torch.nn.functional.interpolate(mask.unsqueeze(0), size=(latent.shape[2], latent.shape[3]), mode='bilinear')
+        mask_downsample = mask_downsample.squeeze(0)
+        
+        # 使用广播方式
+        mask_condition = mask_downsample.unsqueeze(1)  # [batchsize, 1, w, h]
+        result = torch.where(mask_condition > 0.5, noise, latent)
+        
+        # 返回latent字典格式
+        return ({"samples": result},)
+
+
+class ComputeSurfaceTiltAngleNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "masks": ("MASK",),  # 多张mask
+                "depth_image": ("IMAGE",),  # 单张深度图
+            }
+        }
+
+    CATEGORY = "segment_anything"
+    FUNCTION = "main"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("surface_angles",)
+    
+    def main(self, masks, depth_image):
+        import json
+        
+        # 转换深度图为numpy数组
+        depth_np = depth_image[0].cpu().numpy()
+        # 获取深度图维度，考虑可能有多个通道
+        if len(depth_np.shape) > 2:
+            # 如果是多通道图像，使用第一个通道或平均值
+            if depth_np.shape[2] == 1:
+                depth_np = depth_np[:, :, 0]
+            else:
+                # 使用所有通道的平均值
+                depth_np = np.mean(depth_np, axis=2)
+
+        # 计算深度图的梯度
+        # 使用Sobel算子计算x和y方向的梯度
+        depth_dx = cv2.Sobel(depth_np, cv2.CV_32F, 1, 0, ksize=3)
+        depth_dy = cv2.Sobel(depth_np, cv2.CV_32F, 0, 1, ksize=3)
+
+        # 存储所有mask的倾斜角度和相机视角角度
+        surface_angles = []
+        
+        # 遍历每个mask
+        for i in range(masks.shape[0]):
+            mask = masks[i].cpu().numpy()
+            
+            # 找到mask中所有非零点的坐标
+            ys, xs = np.where(mask > 0)
+            
+            if len(ys) < 10:  # 确保有足够的点进行拟合
+                surface_angles.append(-1)
+                continue
+                
+            # 提取该区域的梯度
+            mask_dx = depth_dx[ys, xs]
+            mask_dy = depth_dy[ys, xs]
+            
+            # 计算平均梯度或者中值梯度（中值可能更鲁棒）
+            avg_dx = np.median(mask_dx)
+            avg_dy = np.median(mask_dy)
+            
+            # 根据梯度构建法向量
+            # 在深度图中，梯度与法向量的关系：法向量 = (-dx, -dy, 1)
+            normal = np.array([-avg_dx, -avg_dy, 1.0])
+            
+            # 归一化法向量
+            normal_magnitude = np.linalg.norm(normal)
+            if normal_magnitude > 0:
+                normal = normal / normal_magnitude
+
+            # 相机视角向量（假设是正视图，指向z轴正方向）
+            camera_vector = np.array([0, 0, 1])
+            
+            # 计算法向量与相机视角的夹角
+            cos_angle = np.dot(normal, camera_vector)
+            angle_rad = np.arccos(np.clip(cos_angle, -1.0, 1.0))
+            angle_deg = np.degrees(angle_rad)
+            
+            surface_angles.append(float(angle_deg))
+        
+        return (json.dumps(surface_angles, ensure_ascii=False),)
+
 class InvertMask:
     @classmethod
     def INPUT_TYPES(cls):
