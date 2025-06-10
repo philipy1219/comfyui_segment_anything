@@ -1,8 +1,8 @@
 {
   "id": "92e6abde-0176-489f-8700-8754ac9214f5",
   "revision": 0,
-  "last_node_id": 31,
-  "last_link_id": 45,
+  "last_node_id": 34,
+  "last_link_id": 49,
   "nodes": [
     {
       "id": 14,
@@ -101,6 +101,105 @@
       ]
     },
     {
+      "id": 18,
+      "type": "MaskPreview+",
+      "pos": [
+        1687.0999755859375,
+        614.9000244140625
+      ],
+      "size": [
+        210,
+        246
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "mask",
+          "name": "mask",
+          "type": "MASK",
+          "link": 16
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "MaskPreview+"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 26,
+      "type": "PreviewImage",
+      "pos": [
+        2333.095947265625,
+        938.131591796875
+      ],
+      "size": [
+        140,
+        246
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 40
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 23,
+      "type": "CalculateMaskCenters",
+      "pos": [
+        2328.24267578125,
+        827.0856323242188
+      ],
+      "size": [
+        189,
+        46
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "masks",
+          "name": "masks",
+          "type": "MASK",
+          "link": 23
+        },
+        {
+          "label": "depth_image",
+          "name": "depth_image",
+          "type": "IMAGE",
+          "link": 44
+        }
+      ],
+      "outputs": [
+        {
+          "label": "mask_centers",
+          "name": "mask_centers",
+          "type": "STRING",
+          "links": [
+            45
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CalculateMaskCenters"
+      },
+      "widgets_values": []
+    },
+    {
       "id": 10,
       "type": "RAMSAMSegment (segment anything)",
       "pos": [
@@ -112,7 +211,7 @@
         166
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -165,6 +264,14 @@
           "links": [
             16
           ]
+        },
+        {
+          "label": "bbox_info",
+          "name": "bbox_info",
+          "type": "STRING",
+          "links": [
+            46
+          ]
         }
       ],
       "properties": {
@@ -174,168 +281,6 @@
         0.25,
         0.2,
         0.5
-      ]
-    },
-    {
-      "id": 18,
-      "type": "MaskPreview+",
-      "pos": [
-        1687.0999755859375,
-        614.9000244140625
-      ],
-      "size": [
-        210,
-        246
-      ],
-      "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "link": 16
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "Node name for S&R": "MaskPreview+"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 15,
-      "type": "LoadImage",
-      "pos": [
-        581,
-        692
-      ],
-      "size": [
-        315,
-        314
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "label": "IMAGE",
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            32,
-            33,
-            34
-          ]
-        },
-        {
-          "label": "MASK",
-          "name": "MASK",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LoadImage"
-      },
-      "widgets_values": [
-        "demo1.png",
-        "image"
-      ]
-    },
-    {
-      "id": 28,
-      "type": "GetImageSize+",
-      "pos": [
-        1403.2454833984375,
-        766.6550903320312
-      ],
-      "size": [
-        157.23333740234375,
-        66
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "link": 34
-        }
-      ],
-      "outputs": [
-        {
-          "label": "width",
-          "name": "width",
-          "type": "INT",
-          "links": [
-            41
-          ]
-        },
-        {
-          "label": "height",
-          "name": "height",
-          "type": "INT",
-          "links": [
-            42
-          ]
-        },
-        {
-          "label": "count",
-          "name": "count",
-          "type": "INT",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetImageSize+"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 24,
-      "type": "LeReS-DepthMapPreprocessor",
-      "pos": [
-        1249.1436767578125,
-        1042.685546875
-      ],
-      "size": [
-        379.23333740234375,
-        130
-      ],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "link": 32
-        }
-      ],
-      "outputs": [
-        {
-          "label": "IMAGE",
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            43
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LeReS-DepthMapPreprocessor"
-      },
-      "widgets_values": [
-        0,
-        0,
-        "disable",
-        1024
       ]
     },
     {
@@ -350,14 +295,14 @@
         238
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
           "label": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 43
+          "link": 49
         },
         {
           "label": "width_input",
@@ -430,35 +375,195 @@
         512,
         "lanczos",
         false,
-        2,
+        1,
         "disabled"
       ]
     },
     {
-      "id": 17,
-      "type": "MaskPreview+",
+      "id": 15,
+      "type": "LoadImage",
       "pos": [
-        2092.63720703125,
-        534.231201171875
+        581,
+        692
       ],
       "size": [
-        210,
-        246
+        315,
+        314
       ],
       "flags": {},
-      "order": 8,
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "label": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            33,
+            34,
+            48
+          ]
+        },
+        {
+          "label": "MASK",
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "demo1.png",
+        "image"
+      ]
+    },
+    {
+      "id": 28,
+      "type": "GetImageSize+",
+      "pos": [
+        1208.2454833984375,
+        853.6550903320312
+      ],
+      "size": [
+        157.23333740234375,
+        66
+      ],
+      "flags": {},
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
-          "label": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "link": 15
+          "label": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 34
+        }
+      ],
+      "outputs": [
+        {
+          "label": "width",
+          "name": "width",
+          "type": "INT",
+          "links": [
+            41
+          ]
+        },
+        {
+          "label": "height",
+          "name": "height",
+          "type": "INT",
+          "links": [
+            42
+          ]
+        },
+        {
+          "label": "count",
+          "name": "count",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetImageSize+"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 34,
+      "type": "DepthAnythingV2Preprocessor",
+      "pos": [
+        1199,
+        1067
+      ],
+      "size": [
+        279.61663818359375,
+        82
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "label": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            49
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DepthAnythingV2Preprocessor"
+      },
+      "widgets_values": [
+        "depth_anything_v2_vitl.pth",
+        512
+      ]
+    },
+    {
+      "id": 32,
+      "type": "PreviewAny",
+      "pos": [
+        2721,
+        434
+      ],
+      "size": [
+        140,
+        76
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "source",
+          "name": "source",
+          "type": "*",
+          "link": 46
         }
       ],
       "outputs": [],
       "properties": {
-        "Node name for S&R": "MaskPreview+"
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 31,
+      "type": "PreviewAny",
+      "pos": [
+        2804.9091796875,
+        842.3502807617188
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "source",
+          "name": "source",
+          "type": "*",
+          "link": 45
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
       },
       "widgets_values": []
     },
@@ -491,101 +596,30 @@
       "widgets_values": []
     },
     {
-      "id": 26,
-      "type": "PreviewImage",
+      "id": 17,
+      "type": "MaskPreview+",
       "pos": [
-        2333.095947265625,
-        938.131591796875
+        2338.63720703125,
+        519.231201171875
       ],
       "size": [
-        140,
+        210,
         246
       ],
       "flags": {},
-      "order": 11,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
-          "label": "images",
-          "name": "images",
-          "type": "IMAGE",
-          "link": 40
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "Node name for S&R": "PreviewImage"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 31,
-      "type": "PreviewAny",
-      "pos": [
-        2804.9091796875,
-        842.3502807617188
-      ],
-      "size": [
-        140,
-        76
-      ],
-      "flags": {},
-      "order": 13,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "source",
-          "name": "source",
-          "type": "*",
-          "link": 45
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "Node name for S&R": "PreviewAny"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 23,
-      "type": "CalculateMaskCenters",
-      "pos": [
-        2328.24267578125,
-        827.0856323242188
-      ],
-      "size": [
-        189,
-        46
-      ],
-      "flags": {},
-      "order": 12,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "masks",
-          "name": "masks",
+          "label": "mask",
+          "name": "mask",
           "type": "MASK",
-          "link": 23
-        },
-        {
-          "label": "depth_image",
-          "name": "depth_image",
-          "type": "IMAGE",
-          "link": 44
+          "link": 15
         }
       ],
-      "outputs": [
-        {
-          "label": "mask_centers",
-          "name": "mask_centers",
-          "type": "STRING",
-          "links": [
-            45
-          ]
-        }
-      ],
+      "outputs": [],
       "properties": {
-        "Node name for S&R": "CalculateMaskCenters"
+        "Node name for S&R": "MaskPreview+"
       },
       "widgets_values": []
     }
@@ -648,14 +682,6 @@
       "MASK"
     ],
     [
-      32,
-      15,
-      0,
-      24,
-      0,
-      "IMAGE"
-    ],
-    [
       33,
       15,
       0,
@@ -696,14 +722,6 @@
       "INT"
     ],
     [
-      43,
-      24,
-      0,
-      30,
-      0,
-      "IMAGE"
-    ],
-    [
       44,
       30,
       0,
@@ -718,6 +736,30 @@
       31,
       0,
       "*"
+    ],
+    [
+      46,
+      10,
+      3,
+      32,
+      0,
+      "*"
+    ],
+    [
+      48,
+      15,
+      0,
+      34,
+      0,
+      "IMAGE"
+    ],
+    [
+      49,
+      34,
+      0,
+      30,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [],

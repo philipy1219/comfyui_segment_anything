@@ -27,6 +27,7 @@ import torchvision
 import torchvision.transforms as TS
 from ram.models import ram, ram_plus
 from ram import inference_ram
+import json
 
 logger = logging.getLogger('comfyui_segment_anything')
 
@@ -578,12 +579,13 @@ class RAMSAMSegment:
         }
     CATEGORY = "segment_anything"
     FUNCTION = "main"
-    RETURN_TYPES = ("IMAGE", "MASK", "MASK")
-    RETURN_NAMES = ["image", "mask", "combined_mask"]
+    RETURN_TYPES = ("IMAGE", "MASK", "MASK", "STRING")
+    RETURN_NAMES = ["image", "mask", "combined_mask", "bbox_info"]
 
     def main(self, sam_model, dino_model, ram_model, image, box_threshold, text_threshold, iou_threshold):
         res_images = []
         res_masks = []
+        bbox_info_list = []
         # TODO: more elegant
         if hasattr(sam_model, 'model_name') and 'hq' in sam_model.model_name:
             sam_is_hq = True
@@ -623,7 +625,9 @@ class RAMSAMSegment:
                 tmp_images.append(extracted_region)
             res_masks.extend(masks)
             res_images.extend(tmp_images)
-        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0), combined_mask.unsqueeze(0))
+            bbox_info_list.append(boxes_filt.tolist())
+        bbox_json = json.dumps(bbox_info_list, ensure_ascii=False)
+        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0), combined_mask.unsqueeze(0), bbox_json)
 
 class CalculateMaskCenters:
     @classmethod
