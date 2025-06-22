@@ -5,3 +5,4 @@ yapf
 opencv-python
 fairscale
 scipy==1.13.0
+oss2

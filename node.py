@@ -579,13 +579,14 @@ class RAMSAMSegment:
         }
     CATEGORY = "segment_anything"
     FUNCTION = "main"
-    RETURN_TYPES = ("IMAGE", "MASK", "MASK", "STRING")
-    RETURN_NAMES = ["image", "mask", "combined_mask", "bbox_info"]
+    RETURN_TYPES = ("IMAGE", "MASK", "MASK", "STRING", "STRING")
+    RETURN_NAMES = ["image", "mask", "combined_mask", "bbox_info", "mask_labels"]
 
     def main(self, sam_model, dino_model, ram_model, image, box_threshold, text_threshold, iou_threshold):
         res_images = []
         res_masks = []
         bbox_info_list = []
+        all_mask_labels = []  # 新增存储所有mask的标签
         # TODO: more elegant
         if hasattr(sam_model, 'model_name') and 'hq' in sam_model.model_name:
             sam_is_hq = True
@@ -614,8 +615,9 @@ class RAMSAMSegment:
             )
             tmp_images = []
             combined_mask = torch.zeros_like(masks[0][0])
-            for mask in masks:
-                combined_mask = combined_mask | mask[0]  # 使用或运算合并所有mask
+            # 在处理masks的循环中，保存对应的标签
+            for idx, mask in enumerate(masks):
+                combined_mask = combined_mask | mask[0]
                 mask_np = mask[0].cpu().numpy().astype(np.uint8) * 255
                 background = np.zeros_like(item)
                 region = cv2.bitwise_and(item, item, mask=mask_np)
@@ -623,11 +625,16 @@ class RAMSAMSegment:
                 extracted_region = np.array(extracted_region).astype(np.float32) / 255.0
                 extracted_region = torch.from_numpy(extracted_region)[None,]
                 tmp_images.append(extracted_region)
+                all_mask_labels.append(pred_phrases[idx])  # 保存当前mask对应的标签
+                
             res_masks.extend(masks)
             res_images.extend(tmp_images)
             bbox_info_list.append(boxes_filt.tolist())
+            
         bbox_json = json.dumps(bbox_info_list, ensure_ascii=False)
-        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0), combined_mask.unsqueeze(0), bbox_json)
+        labels_json = json.dumps(all_mask_labels, ensure_ascii=False)  # 将标签转换为JSON字符串
+        
+        return (torch.cat(res_images, dim=0), torch.cat(res_masks, dim=0), combined_mask.unsqueeze(0), bbox_json, labels_json)
 
 class CalculateMaskCenters:
     @classmethod
