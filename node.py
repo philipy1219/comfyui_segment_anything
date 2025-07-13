@@ -615,8 +615,19 @@ class RAMSAMSegment:
             )
             tmp_images = []
             combined_mask = torch.zeros_like(masks[0][0])
-            # 在处理masks的循环中，保存对应的标签
+            
+            # 计算每个mask的面积并创建排序索引
+            mask_areas = []
             for idx, mask in enumerate(masks):
+                area = torch.sum(mask[0]).item()
+                mask_areas.append((area, idx))
+            
+            # 按面积从大到小排序
+            mask_areas.sort(key=lambda x: x[0], reverse=True)
+            
+            # 按照排序后的顺序处理masks
+            for area, idx in mask_areas:
+                mask = masks[idx]
                 combined_mask = combined_mask | mask[0]
                 mask_np = mask[0].cpu().numpy().astype(np.uint8) * 255
                 background = np.zeros_like(item)
@@ -627,9 +638,14 @@ class RAMSAMSegment:
                 tmp_images.append(extracted_region)
                 all_mask_labels.append(pred_phrases[idx])  # 保存当前mask对应的标签
                 
-            res_masks.extend(masks)
+            # 按照排序后的顺序添加masks
+            sorted_masks = [masks[idx] for area, idx in mask_areas]
+            res_masks.extend(sorted_masks)
             res_images.extend(tmp_images)
-            bbox_info_list.append(boxes_filt.tolist())
+            
+            # 按照排序后的顺序添加bbox信息
+            sorted_boxes = [boxes_filt[idx].tolist() for area, idx in mask_areas]
+            bbox_info_list.extend(sorted_boxes)
             
         bbox_json = json.dumps(bbox_info_list, ensure_ascii=False)
         labels_json = json.dumps(all_mask_labels, ensure_ascii=False)  # 将标签转换为JSON字符串
